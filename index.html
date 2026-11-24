@@ -13,7 +13,7 @@
   --bg:#F7F8FA; --surface:#FFFFFF; --sku-bg:#EEF1F6; --ink:#1C2541; --muted:#5B6478; --line:#DDE1E8; --row-hover:#F5F7FA;
   --focus:#2F6FEB;
   --f-design:#7A5AF8; --f-packaging:#C2410C; --f-specs:#0E7490; --f-quality:#15803D;
-  --f-production:#B45309; --f-logistics:#1D4ED8; --f-retail:#BE185D;
+  --f-production:#B45309; --f-logistics:#1D4ED8; --f-retail:#BE185D; --f-custom:#64748B;
   --s-ns-bg:#EEF0F4; --s-ns-fg:#4B5468;
   --s-ip-bg:#E3ECFD; --s-ip-fg:#1E4FB8;
   --s-oh-bg:#FDF1DC; --s-oh-fg:#92560A;
@@ -29,7 +29,7 @@
     --bg:#12151C; --surface:#1A1E27; --sku-bg:#232938; --ink:#E8EBF2; --muted:#9AA3B5; --line:#2C3240; --row-hover:#1F2430;
     --focus:#7AA5FF;
     --f-design:#A48BFF; --f-packaging:#F08A50; --f-specs:#38BCD6; --f-quality:#4ACB7A;
-    --f-production:#E8A23C; --f-logistics:#6E98FF; --f-retail:#F06AA8;
+    --f-production:#E8A23C; --f-logistics:#6E98FF; --f-retail:#F06AA8; --f-custom:#A3AEC2;
     --s-ns-bg:#2A303D; --s-ns-fg:#C3CADA;
     --s-ip-bg:#1E2D4F; --s-ip-fg:#9CBBFF;
     --s-oh-bg:#3D2E14; --s-oh-fg:#F2C371;
@@ -77,6 +77,13 @@ tbody tr.sku:first-child td{border-top:0}
 .sku-inner{display:flex;align-items:center;gap:10px;padding:12px 10px 12px 6px}
 .sname{font-weight:700;font-size:17px}
 .scount{color:var(--muted);font-size:13px}
+.addfn{font-size:13px;border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:4px 8px;color:var(--muted);cursor:pointer}
+.ms-wrap{display:flex;align-items:center}
+.grip{border:0;background:none;color:var(--muted);cursor:grab;padding:6px 2px 6px 8px;font-size:14px;line-height:1;border-radius:4px;flex:none}
+.grip:active{cursor:grabbing}
+tr.item.dragging{opacity:.4}
+tr.drop-before td{border-top:2px solid var(--focus)}
+tr.drop-after td{border-bottom:2px solid var(--focus)}
 .kloc{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);white-space:nowrap}
 .kloc input{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:5px 8px;width:260px;max-width:40vw;font-size:14px;color:var(--ink)}
 
@@ -243,7 +250,17 @@ function load(){
 }
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
 
-let state = load(); save();
+let state = load();
+const allFns=()=>[...FUNCTIONS,...(state.customFns||[])];
+const fnById=id=>allFns().find(f=>f.id===id);
+const fnOrder=id=>{const i=FUNCTIONS.findIndex(f=>f.id===id); return i>=0?i:100+(state.customFns||[]).findIndex(f=>f.id===id);};
+const DEFAULT_FNS=FUNCTIONS.filter(f=>f.id!=='specs').map(f=>f.id);
+function skuFns(sku){ if(!sku.fns) sku.fns=[...DEFAULT_FNS]; return sku.fns; }
+const skuById=id=>state.skus.find(x=>x.id===id);
+const isActive=(skuId,fn)=>{const sk=skuById(skuId); return !!sk && skuFns(sk).includes(fn);};
+const activeRows=()=>state.rows.filter(r=>isActive(r.skuId,r.fn));
+const activeKeys=()=>Object.keys(state.fmeta).filter(k=>{const [a,b]=k.split(':'); return isActive(a,b);});
+state.skus.forEach(skuFns); save();
 const collapsed = new Set();
 let statusFilter = null;
 const fkey = (skuId,fn) => skuId+':'+fn;
@@ -281,11 +298,11 @@ function render(){
   let html='';
   for(const sku of state.skus){
     if(skuF && sku.id!==skuF) continue;
-    const skuRows=state.rows.filter(r=>r.skuId===sku.id);
+    const skuRows=state.rows.filter(r=>r.skuId===sku.id && skuFns(sku).includes(r.fn));
     const done=skuRows.filter(r=>r.status==='dn').length;
     const sKey='s:'+sku.id, sCol=collapsed.has(sKey);
     let inner='';
-    for(const f of FUNCTIONS){
+    for(const f of skuFns(sku).map(fnById).filter(Boolean)){
       const k=fkey(sku.id,f.id), meta=getMeta(k);
       const rows=skuRows.filter(r=>r.fn===f.id), vis=rows.filter(matches);
       const own=document.getElementById('ownerFilter').value;
@@ -300,7 +317,8 @@ function render(){
         <td><input class="cell" data-k="owner" value="${esc(meta.owner)}" placeholder="Owner" aria-label="${esc(f.name)} owner for ${esc(sku.name)}"></td>
         <td><input class="cell${late?' late':''}" type="date" data-k="due" value="${esc(meta.due)}" aria-label="${esc(f.name)} due date"${late?' title="Past due"':''}></td>
         <td><span class="pill st-${rs}" title="Rolled up from this function's milestones">${label(rs)}</span>${rows.length?`<span class="rcount">${done}/${rows.length}</span>`:''}</td>
-        <td></td><td></td>
+        <td></td>
+        <td><button class="del" data-delfn="${k}" aria-label="Remove ${esc(f.name)} from ${esc(sku.name)}" title="Remove function">×</button></td>
       </tr>`;
       if(fCol) continue;
       for(const r of vis){
@@ -308,7 +326,7 @@ function render(){
         inner+=`<tr class="item" style="--fc:var(${f.color})" data-id="${r.id}">
           <td><div class="ctx skuctx">${esc(sku.name)}</div></td>
           <td><div class="ctx fnctx">${esc(f.name)}</div></td>
-          <td><input class="cell" data-k="milestone" value="${esc(r.milestone)}" placeholder="Milestone" aria-label="Milestone"></td>
+          <td><div class="ms-wrap"><button class="grip" data-grip aria-label="Reorder milestone. Drag, or use the up and down arrow keys" title="Drag to reorder">⠿</button><input class="cell" data-k="milestone" value="${esc(r.milestone)}" placeholder="Milestone" aria-label="Milestone"></div></td>
           <td><input class="cell" data-k="owner" value="${esc(r.owner)}" placeholder="Owner" aria-label="Owner"></td>
           <td><input class="cell${rl?' late':''}" type="date" data-k="due" value="${esc(r.due)}" aria-label="Milestone due date"${rl?' title="Past due"':''}></td>
           <td><select class="status st-${r.status}" data-k="status" aria-label="Milestone status">${statusOptions(r.status)}</select></td>
@@ -322,6 +340,7 @@ function render(){
       <button class="toggle" data-toggle="${sKey}" aria-expanded="${!sCol}" aria-label="Show or hide ${esc(sku.name)}"><span>▾</span></button>
       <span class="sname">${esc(sku.name)}</span>
       <span class="scount">${skuRows.length} milestone${skuRows.length===1?'':'s'}, ${done} complete</span>
+      <select class="addfn" data-addfn="${sku.id}" aria-label="Add a function to ${esc(sku.name)}"><option value="">+ Add function</option>${allFns().filter(f=>!skuFns(sku).includes(f.id)).map(f=>`<option value="${f.id}">${esc(f.name)}</option>`).join('')}<option value="__new">New function…</option></select>
       <label class="kloc">Kitter / Assembly location<input data-k="location" value="${esc(sku.location)}" placeholder="Add location"></label>
     </div></td></tr>`;
     if(!sCol) html+=inner;
@@ -332,13 +351,13 @@ function render(){
 }
 
 function renderSummary(){
-  let h=`<button class="chip" data-st="" aria-pressed="${!statusFilter}">All milestones <b>${state.rows.length}</b></button>`;
+  let h=`<button class="chip" data-st="" aria-pressed="${!statusFilter}">All milestones <b>${activeRows().length}</b></button>`;
   for(const s of STATUSES){
-    const n=state.rows.filter(r=>r.status===s.id).length;
+    const n=activeRows().filter(r=>r.status===s.id).length;
     h+=`<button class="chip" data-st="${s.id}" aria-pressed="${statusFilter===s.id}">${s.label} <b>${n}</b></button>`;
   }
-  const late=state.rows.filter(r=>isLate(r.due,r.status)).length
-           + Object.keys(state.fmeta).filter(k=>isLate(getMeta(k).due,rollup(fnRows(k)))).length;
+  const late=activeRows().filter(r=>isLate(r.due,r.status)).length
+           + activeKeys().filter(k=>isLate(getMeta(k).due,rollup(fnRows(k)))).length;
   if(late) h+=`<span class="chip late">Past due <b>${late}</b></span>`;
   document.getElementById('summary').innerHTML=h;
 }
@@ -346,14 +365,14 @@ function renderFilters(){
   const sf=document.getElementById('skuFilter'), sCur=sf.value;
   sf.innerHTML='<option value="">All SKUs / items</option>'+state.skus.map(s=>`<option value="${s.id}"${s.id===sCur?' selected':''}>${esc(s.name)}</option>`).join('');
   const of=document.getElementById('ownerFilter'), oCur=of.value;
-  const owners=[...new Set([...state.rows.map(r=>r.owner),...Object.values(state.fmeta).map(m=>m.owner)].filter(Boolean))].sort();
+  const owners=[...new Set([...activeRows().map(r=>r.owner),...activeKeys().map(k=>state.fmeta[k].owner)].filter(Boolean))].sort();
   of.innerHTML='<option value="">All owners</option>'+owners.map(o=>`<option${o===oCur?' selected':''}>${esc(o)}</option>`).join('');
   if(oCur && !owners.includes(oCur)) of.value='';
 }
 
 const body=document.getElementById('body');
 body.addEventListener('click',e=>{
-  const t=e.target.closest('[data-toggle],[data-add],[data-del]'); if(!t) return;
+  const t=e.target.closest('[data-toggle],[data-add],[data-del],[data-delfn]'); if(!t) return;
   if(t.dataset.toggle){ const k=t.dataset.toggle; collapsed.has(k)?collapsed.delete(k):collapsed.add(k); render(); }
   else if(t.dataset.add){
     const [skuId,fn]=t.dataset.add.split(':');
@@ -361,6 +380,14 @@ body.addEventListener('click',e=>{
     state.rows.push(r); collapsed.delete('s:'+skuId); collapsed.delete('f:'+t.dataset.add);
     save(); render();
     document.querySelector(`tr[data-id="${r.id}"] [data-k="milestone"]`)?.focus();
+  }
+  else if(t.dataset.delfn){
+    const k=t.dataset.delfn, [skuId,fn]=k.split(':'), sku=skuById(skuId), f=fnById(fn), n=fnRows(k).length;
+    if(confirm(`Remove ${f.name} from ${sku.name}?`+(n?` Its ${n} milestone${n===1?'':'s'} will be deleted too.`:''))){
+      sku.fns=skuFns(sku).filter(x=>x!==fn);
+      state.rows=state.rows.filter(r=>!(r.skuId===skuId&&r.fn===fn));
+      delete state.fmeta[k]; save(); render();
+    }
   }
   else if(t.dataset.del && confirm('Delete this milestone?')){
     state.rows=state.rows.filter(r=>r.id!==t.dataset.del); save(); render();
@@ -376,7 +403,58 @@ function saveField(e){
   const r=state.rows.find(x=>x.id===tr.dataset.id); if(r){ r[k]=e.target.value; save(); }
 }
 body.addEventListener('input',saveField);
-body.addEventListener('change',e=>{ saveField(e); if(['status','due','owner'].includes(e.target.dataset.k)) render(); });
+function addFn(skuId,val){
+  const sku=skuById(skuId); let id=val;
+  if(val==='__new'){
+    const name=(prompt('Name for the new function')||'').trim();
+    if(!name){ render(); return; }
+    const ex=allFns().find(f=>f.name.toLowerCase()===name.toLowerCase());
+    if(ex) id=ex.id; else { id='c'+uid(); (state.customFns=state.customFns||[]).push({id,name,color:'--f-custom'}); }
+  }
+  const fns=skuFns(sku); if(!fns.includes(id)) fns.push(id);
+  fns.sort((a,b)=>fnOrder(a)-fnOrder(b));
+  collapsed.delete('s:'+skuId); save(); render();
+}
+body.addEventListener('change',e=>{
+  if(e.target.dataset.addfn){ if(e.target.value) addFn(e.target.dataset.addfn,e.target.value); return; }
+  saveField(e); if(['status','due','owner'].includes(e.target.dataset.k)) render(); });
+function moveRow(id,targetId,after){
+  const i=state.rows.findIndex(r=>r.id===id); const [r]=state.rows.splice(i,1);
+  let j=state.rows.findIndex(x=>x.id===targetId); if(after) j++;
+  state.rows.splice(j,0,r); save();
+}
+let drag=null;
+const clearMarks=()=>body.querySelectorAll('.drop-before,.drop-after').forEach(x=>x.classList.remove('drop-before','drop-after'));
+body.addEventListener('mousedown',e=>{ const g=e.target.closest('[data-grip]'); if(g) g.closest('tr.item').draggable=true; });
+body.addEventListener('mouseup',()=>body.querySelectorAll('tr.item[draggable="true"]').forEach(t=>t.draggable=false));
+body.addEventListener('dragstart',e=>{
+  const tr=e.target.closest('tr.item'); if(!tr||!tr.draggable){ e.preventDefault(); return; }
+  drag=state.rows.find(r=>r.id===tr.dataset.id); tr.classList.add('dragging');
+  e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain',tr.dataset.id);
+});
+body.addEventListener('dragover',e=>{
+  if(!drag) return;
+  const tr=e.target.closest('tr.item'); if(!tr||tr.dataset.id===drag.id) return;
+  const t=state.rows.find(r=>r.id===tr.dataset.id);
+  if(!t||t.skuId!==drag.skuId||t.fn!==drag.fn) return; // only within the same function
+  e.preventDefault();
+  const rc=tr.getBoundingClientRect(), after=e.clientY>rc.top+rc.height/2;
+  clearMarks(); tr.classList.add(after?'drop-after':'drop-before');
+});
+body.addEventListener('drop',e=>{
+  if(!drag) return; const tr=body.querySelector('.drop-before,.drop-after');
+  if(tr){ e.preventDefault(); moveRow(drag.id,tr.dataset.id,tr.classList.contains('drop-after')); }
+});
+body.addEventListener('dragend',()=>{ drag=null; clearMarks(); render(); });
+body.addEventListener('keydown',e=>{
+  const g=e.target.closest('[data-grip]'); if(!g||!['ArrowUp','ArrowDown'].includes(e.key)) return;
+  e.preventDefault();
+  const id=g.closest('tr.item').dataset.id, r=state.rows.find(x=>x.id===id);
+  const sib=state.rows.filter(x=>x.skuId===r.skuId&&x.fn===r.fn), i=sib.indexOf(r), j=i+(e.key==='ArrowUp'?-1:1);
+  if(j<0||j>=sib.length) return;
+  moveRow(id,sib[j].id,e.key==='ArrowDown'); render();
+  body.querySelector(`tr[data-id="${id}"] [data-grip]`)?.focus();
+});
 document.getElementById('summary').addEventListener('click',e=>{
   const c=e.target.closest('[data-st]'); if(!c) return; statusFilter=c.dataset.st||null; render();
 });
@@ -389,7 +467,7 @@ const COLS=['SKU ID / Holiday Item','Function','Milestone','Owner','Due Date','S
 const csvCell=v=>/[",\n]/.test(String(v??''))?`"${String(v).replace(/"/g,'""')}"`:String(v??'');
 document.getElementById('exportCsv').onclick=()=>{
   const lines=[COLS.join(',')];
-  for(const s of state.skus) for(const f of FUNCTIONS){
+  for(const s of state.skus) for(const f of skuFns(s).map(fnById).filter(Boolean)){
     const m=getMeta(fkey(s.id,f.id));
     lines.push([s.name,f.name,'',m.owner,m.due,label(rollup(fnRows(fkey(s.id,f.id)))),'',s.location||''].map(csvCell).join(','));
     for(const r of state.rows.filter(x=>x.skuId===s.id&&x.fn===f.id))
@@ -413,19 +491,24 @@ document.getElementById('importCsvBtn').onclick=()=>document.getElementById('imp
 document.getElementById('importCsv').onchange=async e=>{
   const file=e.target.files[0]; if(!file) return;
   const data=parseCsv(await file.text()).slice(1);
-  const skus=state.skus.map(s=>({...s})), fmeta={}, rows=[];
+  const skus=state.skus.map(s=>({...s})), fmeta={}, rows=[], customFns=[...(state.customFns||[])], fnsBy={};
   for(const c of data){
     const name=(c[0]||'').trim(); if(!name) continue;
-    const f=FUNCTIONS.find(x=>x.name.toLowerCase()===(c[1]||'').trim().toLowerCase()); if(!f) continue;
+    const fname=(c[1]||'').trim(); if(!fname) continue;
+    let f=[...FUNCTIONS,...customFns].find(x=>x.name.toLowerCase()===fname.toLowerCase());
+    if(!f){ f={id:'c'+uid(),name:fname,color:'--f-custom'}; customFns.push(f); }
     let s=skus.find(x=>x.name.toLowerCase()===name.toLowerCase());
     if(!s){ s={id:'sku'+uid(),name}; skus.push(s); }
     if((c[7]||'').trim()) s.location=c[7].trim();
+    (fnsBy[s.id]=fnsBy[s.id]||new Set()).add(f.id);
     const st=(STATUSES.find(x=>x.label.toLowerCase()===(c[5]||'').trim().toLowerCase())||{id:'ns'}).id;
     if(!(c[2]||'').trim()) fmeta[fkey(s.id,f.id)]={owner:(c[3]||'').trim(),due:(c[4]||'').trim()};
     else rows.push({id:uid(),skuId:s.id,fn:f.id,milestone:c[2],owner:c[3]||'',due:(c[4]||'').trim(),status:st,notes:c[6]||''});
   }
   if(confirm(`Replace the current tracker with ${rows.length} imported milestones?`)){
-    state={version:2,skus,fmeta,rows}; save(); render();
+    state={version:2,skus,fmeta,rows,customFns,cl:state.cl};
+    skus.forEach(s=>{ if(fnsBy[s.id]) s.fns=[...fnsBy[s.id]].sort((a,b)=>fnOrder(a)-fnOrder(b)); });
+    save(); render();
   }
   e.target.value='';
 };
