@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Holiday Project Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  color-scheme: light;
+  --bg:#F7F8FA; --surface:#FFFFFF; --ink:#1C2541; --muted:#5B6478; --line:#DDE1E8; --row-hover:#F1F3F7;
+  --focus:#2F6FEB;
+  --f-design:#7A5AF8; --f-packaging:#C2410C; --f-specs:#0E7490; --f-quality:#15803D;
+  --f-production:#B45309; --f-logistics:#1D4ED8; --f-retail:#BE185D;
+  --s-ns-bg:#EEF0F4; --s-ns-fg:#4B5468;
+  --s-ip-bg:#E3ECFD; --s-ip-fg:#1E4FB8;
+  --s-ar-bg:#FDF1DC; --s-ar-fg:#92560A;
+  --s-bl-bg:#FCE4E4; --s-bl-fg:#A42323;
+  --s-dn-bg:#DFF3E6; --s-dn-fg:#17693A;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    color-scheme: dark;
+    --bg:#12151C; --surface:#1A1E27; --ink:#E8EBF2; --muted:#9AA3B5; --line:#2C3240; --row-hover:#212633;
+    --focus:#7AA5FF;
+    --f-design:#A48BFF; --f-packaging:#F08A50; --f-specs:#38BCD6; --f-quality:#4ACB7A;
+    --f-production:#E8A23C; --f-logistics:#6E98FF; --f-retail:#F06AA8;
+    --s-ns-bg:#2A303D; --s-ns-fg:#C3CADA;
+    --s-ip-bg:#1E2D4F; --s-ip-fg:#9CBBFF;
+    --s-ar-bg:#3D2E14; --s-ar-fg:#F2C371;
+    --s-bl-bg:#44201F; --s-bl-fg:#FF9C9C;
+    --s-dn-bg:#173826; --s-dn-fg:#7EDBA2;
+  }
+}
+*,*::before,*::after{box-sizing:inherit}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:15px;line-height:1.45}
+.wrap{max-width:1400px;margin:0 auto;padding:28px 24px 64px}
+header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:20px}
+h1{font-size:28px;font-weight:700;letter-spacing:-0.01em;margin:0}
+.sub{color:var(--muted);margin:4px 0 0}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+button,select,input{font:inherit;color:inherit}
+.btn{border:1px solid var(--line);background:var(--surface);padding:8px 14px;border-radius:8px;cursor:pointer;font-weight:500}
+.btn:hover{background:var(--row-hover)}
+.btn.primary{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+.summary{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;font-size:13px;font-weight:600;border:1px solid transparent;cursor:pointer;background:var(--surface);border-color:var(--line);color:var(--muted)}
+.chip b{color:var(--ink)}
+.chip[aria-pressed="true"]{border-color:var(--ink);color:var(--ink)}
+
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.toolbar input,.toolbar select{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 10px;min-width:180px}
+
+.table-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;min-width:1080px}
+th,td{text-align:left;padding:0;border-bottom:1px solid var(--line);vertical-align:middle}
+thead th{position:sticky;top:0;background:var(--surface);font-size:13px;font-weight:600;color:var(--muted);padding:10px 10px;z-index:1}
+col.c-sku{width:15%} col.c-fn{width:11%} col.c-ms{width:22%} col.c-own{width:11%} col.c-due{width:10%} col.c-st{width:11%} col.c-notes{width:17%} col.c-x{width:3%}
+
+/* Function group rows: the colored spine */
+tr.group td{padding:0;background:var(--surface)}
+.group-inner{display:flex;align-items:center;gap:12px;padding:12px 10px 12px 0;border-left:5px solid var(--fc)}
+.toggle{background:none;border:0;cursor:pointer;padding:4px 6px 4px 10px;color:var(--muted);font-size:13px;line-height:1}
+.toggle span{display:inline-block;transition:transform .15s}
+tr.group.collapsed .toggle span{transform:rotate(-90deg)}
+.gname{font-weight:700;font-size:16px}
+.gcount{color:var(--muted);font-size:13px}
+.bar{flex:0 0 120px;height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--fc)}
+.gpct{font-size:13px;color:var(--muted);min-width:36px}
+.add{margin-left:auto;font-size:13px;padding:5px 10px}
+
+tr.item td{border-left:0}
+tr.item td:first-child{box-shadow:inset 5px 0 0 color-mix(in srgb,var(--fc) 35%,transparent)}
+tr.item:hover td{background:var(--row-hover)}
+.cell{width:100%;border:0;background:transparent;padding:10px;border-radius:0}
+.cell:focus{background:var(--bg)}
+textarea.cell{resize:vertical;min-height:40px;font:inherit;color:inherit;display:block}
+.fn-tag{padding:10px;color:var(--muted);font-size:14px;white-space:nowrap}
+select.status{border:0;border-radius:999px;padding:4px 10px;margin:0 10px;font-size:13px;font-weight:600;cursor:pointer}
+.st-ns{background:var(--s-ns-bg);color:var(--s-ns-fg)}
+.st-ip{background:var(--s-ip-bg);color:var(--s-ip-fg)}
+.st-ar{background:var(--s-ar-bg);color:var(--s-ar-fg)}
+.st-bl{background:var(--s-bl-bg);color:var(--s-bl-fg)}
+.st-dn{background:var(--s-dn-bg);color:var(--s-dn-fg)}
+input.overdue{color:var(--s-bl-fg);font-weight:600}
+.del{background:none;border:0;cursor:pointer;color:var(--muted);font-size:18px;padding:6px 10px;border-radius:6px}
+.del:hover{color:var(--s-bl-fg)}
+tr.empty td{padding:10px 10px 10px 34px;color:var(--muted);font-size:14px;font-style:italic}
+footer{color:var(--muted);font-size:13px;margin-top:12px}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Holiday Project Tracker</h1>
+      <p class="sub">Milestones by function, from design through retail setup.</p>
+    </div>
+    <div class="actions">
+      <button class="btn" id="expandAll">Expand all</button>
+      <button class="btn" id="collapseAll">Collapse all</button>
+      <button class="btn" id="exportCsv">Export CSV</button>
+      <button class="btn" id="importCsvBtn">Import CSV</button>
+      <input type="file" id="importCsv" accept=".csv" hidden>
+    </div>
+  </header>
+
+  <div class="summary" id="summary" role="group" aria-label="Filter by status"></div>
+
+  <div class="toolbar">
+    <input type="search" id="search" placeholder="Search SKU, milestone, owner, notes" aria-label="Search">
+    <select id="skuFilter" aria-label="Filter by SKU"><option value="">All SKUs / items</option></select>
+    <select id="ownerFilter" aria-label="Filter by owner"><option value="">All owners</option></select>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <colgroup><col class="c-sku"><col class="c-fn"><col class="c-ms"><col class="c-own"><col class="c-due"><col class="c-st"><col class="c-notes"><col class="c-x"></colgroup>
+      <thead><tr>
+        <th scope="col">SKU ID / Holiday Item</th><th scope="col">Function</th><th scope="col">Milestone</th>
+        <th scope="col">Owner</th><th scope="col">Due Date</th><th scope="col">Status</th><th scope="col">Notes</th><th scope="col"><span class="sr" style="position:absolute;left:-9999px">Delete</span></th>
+      </tr></thead>
+      <tbody id="body"></tbody>
+    </table>
+  </div>
+  <footer id="foot">Changes save automatically in this browser.</footer>
+</div>
+
+<script>
+const FUNCTIONS = [
+  {id:'design',name:'Design',color:'--f-design'},
+  {id:'packaging',name:'Packaging',color:'--f-packaging'},
+  {id:'specs',name:'Item & Pallet Specs',color:'--f-specs'},
+  {id:'quality',name:'Quality',color:'--f-quality'},
+  {id:'production',name:'Production',color:'--f-production'},
+  {id:'logistics',name:'Logistics',color:'--f-logistics'},
+  {id:'retail',name:'Retail Setup',color:'--f-retail'}
+];
+const STATUSES = [
+  {id:'ns',label:'Not started'},{id:'ip',label:'In progress'},{id:'ar',label:'At risk'},
+  {id:'bl',label:'Blocked'},{id:'dn',label:'Complete'}
+];
+const KEY = 'holiday-tracker-v1';
+
+let state = load();
+let collapsed = new Set();
+let statusFilter = null;
+
+function load(){
+  try{ const raw = localStorage.getItem(KEY); if(raw) return JSON.parse(raw); }catch(e){}
+  return {rows:[]};
+}
+function save(){
+  try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){}
+}
+const uid = () => Math.random().toString(36).slice(2,10);
+const today = () => new Date().toISOString().slice(0,10);
+const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function matches(r){
+  const q = document.getElementById('search').value.trim().toLowerCase();
+  const sku = document.getElementById('skuFilter').value;
+  const own = document.getElementById('ownerFilter').value;
+  if(statusFilter && r.status!==statusFilter) return false;
+  if(sku && r.sku!==sku) return false;
+  if(own && r.owner!==own) return false;
+  if(q && ![r.sku,r.milestone,r.owner,r.notes].join(' ').toLowerCase().includes(q)) return false;
+  return true;
+}
+
+function render(){
+  const body = document.getElementById('body');
+  let html = '';
+  for(const f of FUNCTIONS){
+    const all = state.rows.filter(r=>r.fn===f.id);
+    const rows = all.filter(matches);
+    const done = all.filter(r=>r.status==='dn').length;
+    const pct = all.length ? Math.round(done/all.length*100) : 0;
+    const isCol = collapsed.has(f.id);
+    html += `<tr class="group${isCol?' collapsed':''}" style="--fc:var(${f.color})"><td colspan="8"><div class="group-inner">
+      <button class="toggle" data-toggle="${f.id}" aria-expanded="${!isCol}" aria-label="Toggle ${esc(f.name)}"><span>▾</span></button>
+      <span class="gname">${esc(f.name)}</span>
+      <span class="gcount">${all.length} milestone${all.length===1?'':'s'}</span>
+      <span class="bar" aria-hidden="true"><i style="width:${pct}%"></i></span><span class="gpct">${pct}%</span>
+      <button class="btn add" data-add="${f.id}">Add milestone</button>
+    </div></td></tr>`;
+    if(isCol) continue;
+    if(!rows.length){
+      html += `<tr class="empty"><td colspan="8">${all.length ? 'No milestones match the current filters.' : 'No milestones yet. Use “Add milestone” to start this function.'}</td></tr>`;
+      continue;
+    }
+    for(const r of rows){
+      const overdue = r.due && r.status!=='dn' && r.due < today();
+      html += `<tr class="item" style="--fc:var(${f.color})" data-id="${r.id}">
+        <td><input class="cell" data-k="sku" value="${esc(r.sku)}" placeholder="SKU / item" aria-label="SKU ID or holiday item"></td>
+        <td><div class="fn-tag">${esc(f.name)}</div></td>
+        <td><input class="cell" data-k="milestone" value="${esc(r.milestone)}" placeholder="Milestone" aria-label="Milestone"></td>
+        <td><input class="cell" data-k="owner" value="${esc(r.owner)}" placeholder="Owner" aria-label="Owner"></td>
+        <td><input class="cell${overdue?' overdue':''}" type="date" data-k="due" value="${esc(r.due)}" aria-label="Due date"${overdue?' title="Overdue"':''}></td>
+        <td><select class="status st-${r.status}" data-k="status" aria-label="Status">${STATUSES.map(s=>`<option value="${s.id}"${s.id===r.status?' selected':''}>${s.label}</option>`).join('')}</select></td>
+        <td><textarea class="cell" data-k="notes" rows="1" placeholder="Notes" aria-label="Notes">${esc(r.notes)}</textarea></td>
+        <td><button class="del" data-del="${r.id}" aria-label="Delete milestone" title="Delete">×</button></td>
+      </tr>`;
+    }
+  }
+  body.innerHTML = html;
+  renderSummary(); renderFilters();
+}
+
+function renderSummary(){
+  const el = document.getElementById('summary');
+  const total = state.rows.length;
+  let h = `<button class="chip" data-st="" aria-pressed="${!statusFilter}">All <b>${total}</b></button>`;
+  for(const s of STATUSES){
+    const n = state.rows.filter(r=>r.status===s.id).length;
+    h += `<button class="chip" data-st="${s.id}" aria-pressed="${statusFilter===s.id}">${s.label} <b>${n}</b></button>`;
+  }
+  const od = state.rows.filter(r=>r.due && r.status!=='dn' && r.due<today()).length;
+  if(od) h += `<span class="chip st-bl" style="cursor:default">Overdue <b style="color:inherit">${od}</b></span>`;
+  el.innerHTML = h;
+}
+
+function renderFilters(){
+  for(const [id,key,label] of [['skuFilter','sku','All SKUs / items'],['ownerFilter','owner','All owners']]){
+    const sel = document.getElementById(id), cur = sel.value;
+    const vals = [...new Set(state.rows.map(r=>r[key]).filter(Boolean))].sort();
+    sel.innerHTML = `<option value="">${label}</option>` + vals.map(v=>`<option${v===cur?' selected':''}>${esc(v)}</option>`).join('');
+    if(cur && !vals.includes(cur)) sel.value='';
+  }
+}
+
+document.getElementById('body').addEventListener('click', e=>{
+  const t = e.target.closest('[data-toggle],[data-add],[data-del]');
+  if(!t) return;
+  if(t.dataset.toggle){ const id=t.dataset.toggle; collapsed.has(id)?collapsed.delete(id):collapsed.add(id); render(); }
+  if(t.dataset.add){
+    const r={id:uid(),fn:t.dataset.add,sku:'',milestone:'',owner:'',due:'',status:'ns',notes:''};
+    state.rows.push(r); collapsed.delete(t.dataset.add); save(); render();
+    document.querySelector(`tr[data-id="${r.id}"] [data-k="milestone"]`)?.focus();
+  }
+  if(t.dataset.del){
+    if(confirm('Delete this milestone?')){ state.rows = state.rows.filter(r=>r.id!==t.dataset.del); save(); render(); }
+  }
+});
+document.getElementById('body').addEventListener('input', e=>{
+  const tr = e.target.closest('tr.item'); if(!tr) return;
+  const r = state.rows.find(x=>x.id===tr.dataset.id); if(!r) return;
+  r[e.target.dataset.k] = e.target.value; save();
+});
+document.getElementById('body').addEventListener('change', e=>{
+  if(['status','due','sku','owner'].includes(e.target.dataset.k)) render();
+});
+document.getElementById('summary').addEventListener('click', e=>{
+  const c = e.target.closest('[data-st]'); if(!c) return;
+  statusFilter = c.dataset.st || null; render();
+});
+['search','skuFilter','ownerFilter'].forEach(id=>document.getElementById(id).addEventListener('input',render));
+document.getElementById('expandAll').onclick=()=>{collapsed.clear();render();};
+document.getElementById('collapseAll').onclick=()=>{FUNCTIONS.forEach(f=>collapsed.add(f.id));render();};
+
+const COLS = ['SKU ID / Holiday Item','Function','Milestone','Owner','Due Date','Status','Notes'];
+const csvCell = v => /[",\n]/.test(v) ? `"${String(v).replace(/"/g,'""')}"` : String(v??'');
+document.getElementById('exportCsv').onclick=()=>{
+  const lines=[COLS.join(',')];
+  for(const f of FUNCTIONS) for(const r of state.rows.filter(x=>x.fn===f.id))
+    lines.push([r.sku,f.name,r.milestone,r.owner,r.due,STATUSES.find(s=>s.id===r.status).label,r.notes].map(csvCell).join(','));
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([lines.join('\n')],{type:'text/csv'}));
+  a.download=`holiday-tracker-${today()}.csv`; a.click();
+};
+function parseCsv(text){
+  const rows=[];let row=[],cur='',q=false;
+  for(let i=0;i<text.length;i++){const c=text[i];
+    if(q){ if(c=='"'&&text[i+1]=='"'){cur+='"';i++;} else if(c=='"') q=false; else cur+=c; }
+    else if(c=='"') q=true; else if(c==','){row.push(cur);cur='';}
+    else if(c=='\n'||c=='\r'){ if(c=='\r'&&text[i+1]=='\n') i++; row.push(cur);rows.push(row);row=[];cur=''; }
+    else cur+=c;}
+  if(cur||row.length){row.push(cur);rows.push(row);}
+  return rows.filter(r=>r.some(x=>x.trim()));
+}
+document.getElementById('importCsvBtn').onclick=()=>document.getElementById('importCsv').click();
+document.getElementById('importCsv').onchange=async e=>{
+  const file=e.target.files[0]; if(!file) return;
+  const rows=parseCsv(await file.text()).slice(1);
+  const added=[];
+  for(const c of rows){
+    const f=FUNCTIONS.find(x=>x.name.toLowerCase()===(c[1]||'').trim().toLowerCase()); if(!f) continue;
+    const s=STATUSES.find(x=>x.label.toLowerCase()===(c[5]||'').trim().toLowerCase());
+    added.push({id:uid(),fn:f.id,sku:c[0]||'',milestone:c[2]||'',owner:c[3]||'',due:c[4]||'',status:s?s.id:'ns',notes:c[6]||''});
+  }
+  if(confirm(`Replace current milestones with ${added.length} imported rows?`)){ state.rows=added; save(); render(); }
+  e.target.value='';
+};
+
+render();
+</script>
+</body>
+</html>
