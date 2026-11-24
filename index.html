@@ -112,6 +112,30 @@ select.status{border:0;border-radius:999px;padding:4px 10px;margin:0 10px;font-s
 .del:hover{color:var(--late)}
 tr.empty td{padding:16px;color:var(--muted);font-style:italic}
 footer{color:var(--muted);font-size:13px;margin-top:12px}
+[hidden]{display:none!important}
+.viewswitch{display:inline-flex;border:1px solid var(--line);border-radius:9px;background:var(--surface);padding:3px;gap:2px}
+.viewswitch button{border:0;background:transparent;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:600;color:var(--muted)}
+.viewswitch button[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
+.top-right{display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+
+/* Checklist view */
+table.cl{min-width:860px}
+table.cl col.cl-item{width:34%} table.cl col.cl-own{width:14%} table.cl col.cl-done{width:8%}
+table.cl th.sk,table.cl td.ck,table.cl td.cnt,table.cl th.cnt{text-align:center}
+table.cl td{padding:10px}
+tr.cl-parent td{background:var(--sku-bg);border-top:2px solid var(--line)}
+tbody tr.cl-parent:first-child td{border-top:0}
+.cl-pname{font-weight:700}
+.cl-cname{padding-left:22px;display:block}
+.cl-own-in{width:100%;border:1px solid transparent;background:transparent;padding:4px 6px;border-radius:6px;font-weight:600}
+.cl-own-in:hover,.cl-own-in:focus{border-color:var(--line);background:var(--surface)}
+.cl-own-inh{font-size:12px;font-style:italic;color:color-mix(in srgb,var(--muted) 70%,transparent);padding-left:6px}
+td.ck input{width:18px;height:18px;cursor:pointer;accent-color:var(--s-dn-fg);vertical-align:middle}
+td.ck input:disabled{cursor:default;opacity:1}
+td.cnt{color:var(--muted);font-size:13px;white-space:nowrap}
+td.cnt.full{color:var(--s-dn-fg);font-weight:700}
+tr.cl-total td{font-weight:600;color:var(--muted);font-size:13px;border-bottom:0}
+.cl-note{color:var(--muted);font-size:13px;margin:0 0 12px}
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 </style>
 </head>
@@ -122,14 +146,33 @@ footer{color:var(--muted);font-size:13px;margin-top:12px}
       <h1>Holiday Project Tracker</h1>
       <p class="sub">Each item broken out by function, with milestones underneath.</p>
     </div>
-    <div class="actions">
+    <div class="top-right">
+    <div class="viewswitch" role="group" aria-label="Choose view">
+      <button type="button" data-view="checklist">Checklist</button>
+      <button type="button" data-view="detailed">Detailed</button>
+    </div>
+    <div class="actions" id="detailActions">
       <button class="btn" id="expandAll">Expand all</button>
       <button class="btn" id="collapseAll">Collapse all</button>
       <button class="btn" id="exportCsv">Export CSV</button>
       <button class="btn" id="importCsvBtn">Import CSV</button>
       <input type="file" id="importCsv" accept=".csv" hidden>
     </div>
+    </div>
   </header>
+
+  <section id="checklistView" hidden>
+    <p class="cl-note">Check off each step per SKU. Parent lines with sub-steps fill in automatically once every sub-step is checked.</p>
+    <div class="table-wrap">
+      <table class="cl">
+        <colgroup id="clCols"></colgroup>
+        <thead id="clHead"></thead>
+        <tbody id="clBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="detailView">
 
   <div class="summary" id="summary" role="group" aria-label="Filter milestones by status"></div>
 
@@ -150,6 +193,7 @@ footer{color:var(--muted);font-size:13px;margin-top:12px}
       <tbody id="body"></tbody>
     </table>
   </div>
+  </section>
   <footer>Changes save automatically in this browser.</footer>
 </div>
 
@@ -386,7 +430,92 @@ document.getElementById('importCsv').onchange=async e=>{
   e.target.value='';
 };
 
+/* ===== High-level checklist ===== */
+const CHECKLIST=[
+  {id:'forecast',name:'Forecast Submitted to Finance (Namrata)',owner:'Retail',children:[
+    {id:'forecast-demand',name:'Added into Demand Forecast (Evergreen SKUs)'}]},
+  {id:'sales',name:'Sales Plans Finalized by Retail',owner:'Retail',children:[
+    {id:'sales-qty',name:'QTYs by Retailers confirmed'},
+    {id:'sales-sku',name:'SKUs by Retailers confirmed'}]},
+  {id:'briefs',name:'SKU Briefs / Concepts',owner:'Design/Brand',children:[
+    {id:'briefs-confirmed',name:'Briefs confirmed (Lemme)'},
+    {id:'briefs-shared',name:'Briefs shared with Kitter'},
+    {id:'briefs-approved',name:'Briefs approved (Lemme)'}]},
+  {id:'artwork',name:'SKU Artwork / Design',owner:'Design/Brand',children:[
+    {id:'artwork-shared',name:'Shared with Kitter'},
+    {id:'artwork-confirmed',name:'Artwork Confirmed'}]},
+  {id:'quotes',name:'Quotes Received from Kitter / Approved by Lemme',owner:'Operations',children:[]},
+  {id:'pos',name:'Purchase Orders Placed with Kitter',owner:'Operations',children:[]}
+];
+function cl(){ if(!state.cl) state.cl={owners:{},checks:{}}; return state.cl; }
+const ck=(itemId,skuId)=>!!cl().checks[itemId+':'+skuId];
+const checkable=()=>CHECKLIST.flatMap(p=>p.children.length?p.children:[p]);
+
+function renderChecklist(){
+  const skus=state.skus, n=skus.length;
+  document.getElementById('clCols').innerHTML='<col class="cl-item"><col class="cl-own">'+skus.map(()=>'<col>').join('')+'<col class="cl-done">';
+  document.getElementById('clHead').innerHTML='<tr><th scope="col">Checklist item</th><th scope="col">Owner</th>'+
+    skus.map(s=>`<th scope="col" class="sk">${esc(s.name)}</th>`).join('')+'<th scope="col" class="cnt">Done</th></tr>';
+  let h='';
+  for(const p of CHECKLIST){
+    const owner=cl().owners[p.id]??p.owner;
+    const hasKids=p.children.length>0;
+    let cells='', doneCount=0;
+    for(const s of skus){
+      if(hasKids){
+        const c=p.children.filter(k=>ck(k.id,s.id)).length, all=c===p.children.length;
+        if(all) doneCount++;
+        cells+=`<td class="ck"><input type="checkbox" disabled ${all?'checked':''} data-ind="${c>0&&!all?1:0}" aria-label="${esc(p.name)}, ${esc(s.name)}: ${c} of ${p.children.length} sub-steps done" title="${c} of ${p.children.length} sub-steps done"></td>`;
+      }else{
+        const on=ck(p.id,s.id); if(on) doneCount++;
+        cells+=`<td class="ck"><input type="checkbox" data-ck="${p.id}:${s.id}" ${on?'checked':''} aria-label="${esc(p.name)}, ${esc(s.name)}"></td>`;
+      }
+    }
+    h+=`<tr class="cl-parent"><td><span class="cl-pname">${esc(p.name)}</span></td>
+      <td><input class="cl-own-in" data-owner="${p.id}" value="${esc(owner)}" placeholder="Owner" aria-label="Owner for ${esc(p.name)}"></td>
+      ${cells}<td class="cnt${doneCount===n?' full':''}">${doneCount}/${n}</td></tr>`;
+    for(const k of p.children){
+      let kc='', kd=0;
+      for(const s of skus){ const on=ck(k.id,s.id); if(on) kd++;
+        kc+=`<td class="ck"><input type="checkbox" data-ck="${k.id}:${s.id}" ${on?'checked':''} aria-label="${esc(k.name)}, ${esc(s.name)}"></td>`; }
+      h+=`<tr class="cl-child"><td><span class="cl-cname">${esc(k.name)}</span></td>
+        <td><span class="cl-own-inh">${esc(owner)}</span></td>${kc}<td class="cnt${kd===n?' full':''}">${kd}/${n}</td></tr>`;
+    }
+  }
+  const items=checkable();
+  h+='<tr class="cl-total"><td>Steps complete per SKU</td><td></td>'+skus.map(s=>{
+    const d=items.filter(i=>ck(i.id,s.id)).length; return `<td class="cnt${d===items.length?' full':''}">${d}/${items.length}</td>`;}).join('')+'<td></td></tr>';
+  const body=document.getElementById('clBody'); body.innerHTML=h;
+  body.querySelectorAll('[data-ind="1"]').forEach(el=>el.indeterminate=true);
+}
+document.getElementById('clBody').addEventListener('change',e=>{
+  const k=e.target.dataset.ck; if(!k) return;
+  if(e.target.checked) cl().checks[k]=true; else delete cl().checks[k];
+  save(); renderChecklist();
+});
+document.getElementById('clBody').addEventListener('input',e=>{
+  const id=e.target.dataset.owner; if(!id) return;
+  cl().owners[id]=e.target.value; save();
+});
+document.getElementById('clBody').addEventListener('focusout',e=>{ if(e.target.dataset.owner) renderChecklist(); });
+
+/* ===== View switching (#checklist / #detailed) ===== */
+const VIEWS=['checklist','detailed'];
+function showView(){
+  const v=VIEWS.includes(location.hash.slice(1))?location.hash.slice(1):'detailed';
+  document.getElementById('checklistView').hidden=v!=='checklist';
+  document.getElementById('detailView').hidden=v!=='detailed';
+  document.getElementById('detailActions').hidden=v!=='detailed';
+  document.querySelectorAll('.viewswitch button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.view===v));
+  if(v==='checklist') renderChecklist(); else render();
+}
+document.querySelector('.viewswitch').addEventListener('click',e=>{
+  const b=e.target.closest('[data-view]'); if(b) location.hash=b.dataset.view;
+});
+window.addEventListener('hashchange',showView);
+
 render();
+showView();
 </script>
 </body>
 </html>
