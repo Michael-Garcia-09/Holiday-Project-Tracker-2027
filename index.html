@@ -85,13 +85,17 @@ tr.fn td:first-child{box-shadow:inset 5px 0 0 var(--fc)}
 .fn-dot{width:9px;height:9px;border-radius:50%;background:var(--fc);flex:none}
 .fn-meta{display:flex;align-items:center;gap:10px;padding:6px 10px}
 .fcount{color:var(--muted);font-size:13px;white-space:nowrap}
-.add{font-size:13px;padding:4px 10px;margin-left:auto;white-space:nowrap}
+.plus{margin-left:6px;width:22px;height:22px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-size:15px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;flex:none}
+.plus:hover{color:var(--ink);border-color:var(--ink)}
+.pill{display:inline-block;border-radius:999px;padding:4px 10px;margin-left:10px;font-size:13px;font-weight:600;cursor:help;white-space:nowrap}
+.rcount{color:var(--muted);font-size:12px;margin-left:6px;white-space:nowrap}
 
 /* Level 3: Milestone */
 tr.item td:first-child{box-shadow:inset 5px 0 0 color-mix(in srgb,var(--fc) 30%,transparent)}
 tr.item:hover td{background:var(--row-hover)}
 .ctx{padding:10px 10px 10px 18px;color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ctx.fnctx{padding-left:28px}
+.ctx.skuctx{font-size:12px;font-style:italic;color:color-mix(in srgb,var(--muted) 70%,transparent)}
 .cell{width:100%;border:0;background:transparent;padding:10px;border-radius:0}
 .cell:focus{background:var(--bg)}
 textarea.cell{resize:vertical;min-height:40px;display:block}
@@ -163,6 +167,7 @@ const STATUSES = [
   {id:'cx',label:'Cancelled'},{id:'ns',label:'Not Started'}
 ];
 const CLOSED = new Set(['dn','cx']);
+const label=id=>(STATUSES.find(s=>s.id===id)||STATUSES[4]).label;
 const KEY = 'holiday-tracker-v1';
 const uid = () => Math.random().toString(36).slice(2,10);
 const today = () => new Date().toISOString().slice(0,10);
@@ -196,7 +201,21 @@ let state = load(); save();
 const collapsed = new Set();
 let statusFilter = null;
 const fkey = (skuId,fn) => skuId+':'+fn;
-const getMeta = k => state.fmeta[k] || {due:'',status:'ns'};
+const getMeta = k => ({owner:'',due:'',...(state.fmeta[k]||{})});
+const fnRows = k => { const [skuId,fn]=k.split(':'); return state.rows.filter(r=>r.skuId===skuId&&r.fn===fn); };
+/* Function status rolls up from its milestones:
+   none yet -> Not Started; Cancelled milestones are set aside;
+   all cancelled -> Cancelled; all remaining complete -> Complete;
+   all remaining not started -> Not Started; any on hold -> On Hold; otherwise In Progress */
+function rollup(rows){
+  if(!rows.length) return 'ns';
+  const act=rows.filter(r=>r.status!=='cx');
+  if(!act.length) return 'cx';
+  if(act.every(r=>r.status==='dn')) return 'dn';
+  if(act.every(r=>r.status==='ns')) return 'ns';
+  if(act.some(r=>r.status==='oh')) return 'oh';
+  return 'ip';
+}
 
 function matches(r){
   const q=document.getElementById('search').value.trim().toLowerCase();
@@ -223,23 +242,25 @@ function render(){
     for(const f of FUNCTIONS){
       const k=fkey(sku.id,f.id), meta=getMeta(k);
       const rows=skuRows.filter(r=>r.fn===f.id), vis=rows.filter(matches);
-      if(anyF && !vis.length) continue;
+      const own=document.getElementById('ownerFilter').value;
+      if(anyF && !vis.length && !(own && meta.owner===own)) continue;
       const fKey='f:'+k, fCol=collapsed.has(fKey);
-      const late=isLate(meta.due,meta.status);
+      const rs=rollup(rows), done=rows.filter(r=>r.status==='dn').length;
+      const late=isLate(meta.due,rs);
       inner+=`<tr class="fn${fCol?' is-collapsed':''}" style="--fc:var(${f.color})" data-fk="${k}">
-        <td></td>
-        <td><div class="fn-head"><button class="toggle" data-toggle="${fKey}" aria-expanded="${!fCol}" aria-label="Show or hide ${esc(f.name)} milestones for ${esc(sku.name)}"><span>▾</span></button><span class="fn-dot" aria-hidden="true"></span>${esc(f.name)}</div></td>
-        <td><div class="fn-meta"><span class="fcount">${rows.length ? rows.length+' milestone'+(rows.length===1?'':'s') : 'No milestones yet'}</span><button class="btn add" data-add="${k}">Add milestone</button></div></td>
-        <td></td>
+        <td><div class="ctx skuctx">${esc(sku.name)}</div></td>
+        <td><div class="fn-head"><button class="toggle" data-toggle="${fKey}" aria-expanded="${!fCol}" aria-label="Show or hide ${esc(f.name)} milestones for ${esc(sku.name)}"><span>▾</span></button><span class="fn-dot" aria-hidden="true"></span>${esc(f.name)}<button class="plus" data-add="${k}" aria-label="Add a ${esc(f.name)} milestone for ${esc(sku.name)}" title="Add milestone">+</button></div></td>
+        <td><div class="fn-meta"><span class="fcount">${rows.length ? rows.length+' milestone'+(rows.length===1?'':'s') : 'No milestones yet'}</span></div></td>
+        <td><input class="cell" data-k="owner" value="${esc(meta.owner)}" placeholder="Owner" aria-label="${esc(f.name)} owner for ${esc(sku.name)}"></td>
         <td><input class="cell${late?' late':''}" type="date" data-k="due" value="${esc(meta.due)}" aria-label="${esc(f.name)} due date"${late?' title="Past due"':''}></td>
-        <td><select class="status st-${meta.status}" data-k="status" aria-label="${esc(f.name)} status">${statusOptions(meta.status)}</select></td>
+        <td><span class="pill st-${rs}" title="Rolled up from this function's milestones">${label(rs)}</span>${rows.length?`<span class="rcount">${done}/${rows.length}</span>`:''}</td>
         <td></td><td></td>
       </tr>`;
       if(fCol) continue;
       for(const r of vis){
         const rl=isLate(r.due,r.status);
         inner+=`<tr class="item" style="--fc:var(${f.color})" data-id="${r.id}">
-          <td><div class="ctx">${esc(sku.name)}</div></td>
+          <td><div class="ctx skuctx">${esc(sku.name)}</div></td>
           <td><div class="ctx fnctx">${esc(f.name)}</div></td>
           <td><input class="cell" data-k="milestone" value="${esc(r.milestone)}" placeholder="Milestone" aria-label="Milestone"></td>
           <td><input class="cell" data-k="owner" value="${esc(r.owner)}" placeholder="Owner" aria-label="Owner"></td>
@@ -270,7 +291,7 @@ function renderSummary(){
     h+=`<button class="chip" data-st="${s.id}" aria-pressed="${statusFilter===s.id}">${s.label} <b>${n}</b></button>`;
   }
   const late=state.rows.filter(r=>isLate(r.due,r.status)).length
-           + Object.values(state.fmeta).filter(m=>isLate(m.due,m.status)).length;
+           + Object.keys(state.fmeta).filter(k=>isLate(getMeta(k).due,rollup(fnRows(k)))).length;
   if(late) h+=`<span class="chip late">Past due <b>${late}</b></span>`;
   document.getElementById('summary').innerHTML=h;
 }
@@ -278,7 +299,7 @@ function renderFilters(){
   const sf=document.getElementById('skuFilter'), sCur=sf.value;
   sf.innerHTML='<option value="">All SKUs / items</option>'+state.skus.map(s=>`<option value="${s.id}"${s.id===sCur?' selected':''}>${esc(s.name)}</option>`).join('');
   const of=document.getElementById('ownerFilter'), oCur=of.value;
-  const owners=[...new Set(state.rows.map(r=>r.owner).filter(Boolean))].sort();
+  const owners=[...new Set([...state.rows.map(r=>r.owner),...Object.values(state.fmeta).map(m=>m.owner)].filter(Boolean))].sort();
   of.innerHTML='<option value="">All owners</option>'+owners.map(o=>`<option${o===oCur?' selected':''}>${esc(o)}</option>`).join('');
   if(oCur && !owners.includes(oCur)) of.value='';
 }
@@ -298,14 +319,15 @@ body.addEventListener('click',e=>{
     state.rows=state.rows.filter(r=>r.id!==t.dataset.del); save(); render();
   }
 });
-body.addEventListener('input',e=>{
+function saveField(e){
   const k=e.target.dataset.k; if(!k) return;
   const fnRow=e.target.closest('tr.fn');
   if(fnRow){ const fk=fnRow.dataset.fk; state.fmeta[fk]={...getMeta(fk),[k]:e.target.value}; save(); return; }
   const tr=e.target.closest('tr.item'); if(!tr) return;
   const r=state.rows.find(x=>x.id===tr.dataset.id); if(r){ r[k]=e.target.value; save(); }
-});
-body.addEventListener('change',e=>{ if(['status','due','owner'].includes(e.target.dataset.k)) render(); });
+}
+body.addEventListener('input',saveField);
+body.addEventListener('change',e=>{ saveField(e); if(['status','due','owner'].includes(e.target.dataset.k)) render(); });
 document.getElementById('summary').addEventListener('click',e=>{
   const c=e.target.closest('[data-st]'); if(!c) return; statusFilter=c.dataset.st||null; render();
 });
@@ -316,12 +338,11 @@ document.getElementById('collapseAll').onclick=()=>{state.skus.forEach(s=>collap
 /* CSV: function-level lines have a blank Milestone */
 const COLS=['SKU ID / Holiday Item','Function','Milestone','Owner','Due Date','Status','Notes'];
 const csvCell=v=>/[",\n]/.test(String(v??''))?`"${String(v).replace(/"/g,'""')}"`:String(v??'');
-const label=id=>(STATUSES.find(s=>s.id===id)||STATUSES[4]).label;
 document.getElementById('exportCsv').onclick=()=>{
   const lines=[COLS.join(',')];
   for(const s of state.skus) for(const f of FUNCTIONS){
     const m=getMeta(fkey(s.id,f.id));
-    lines.push([s.name,f.name,'','',m.due,label(m.status),''].map(csvCell).join(','));
+    lines.push([s.name,f.name,'',m.owner,m.due,label(rollup(fnRows(fkey(s.id,f.id)))),''].map(csvCell).join(','));
     for(const r of state.rows.filter(x=>x.skuId===s.id&&x.fn===f.id))
       lines.push([s.name,f.name,r.milestone,r.owner,r.due,label(r.status),r.notes].map(csvCell).join(','));
   }
@@ -350,7 +371,7 @@ document.getElementById('importCsv').onchange=async e=>{
     let s=skus.find(x=>x.name.toLowerCase()===name.toLowerCase());
     if(!s){ s={id:'sku'+uid(),name}; skus.push(s); }
     const st=(STATUSES.find(x=>x.label.toLowerCase()===(c[5]||'').trim().toLowerCase())||{id:'ns'}).id;
-    if(!(c[2]||'').trim()) fmeta[fkey(s.id,f.id)]={due:(c[4]||'').trim(),status:st};
+    if(!(c[2]||'').trim()) fmeta[fkey(s.id,f.id)]={owner:(c[3]||'').trim(),due:(c[4]||'').trim()};
     else rows.push({id:uid(),skuId:s.id,fn:f.id,milestone:c[2],owner:c[3]||'',due:(c[4]||'').trim(),status:st,notes:c[6]||''});
   }
   if(confirm(`Replace the current tracker with ${rows.length} imported milestones?`)){
