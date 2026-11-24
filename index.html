@@ -84,6 +84,7 @@ tbody tr.sku:first-child td{border-top:0}
 tr.item.dragging{opacity:.4}
 tr.drop-before td{border-top:2px solid var(--focus)}
 tr.drop-after td{border-bottom:2px solid var(--focus)}
+.copysku{font-size:13px;padding:4px 10px}
 .kloc{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);white-space:nowrap}
 .kloc input{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:5px 8px;width:260px;max-width:40vw;font-size:14px;color:var(--ink)}
 
@@ -410,6 +411,7 @@ function render(){
       <span class="sname">${esc(sku.name)}</span>
       <span class="scount">${skuRows.length} milestone${skuRows.length===1?'':'s'}, ${done} complete</span>
       <select class="addfn" data-addfn="${sku.id}" aria-label="Add a function to ${esc(sku.name)}"><option value="">+ Add function</option>${allFns().filter(f=>!skuFns(sku).includes(f.id)).map(f=>`<option value="${f.id}">${esc(f.name)}</option>`).join('')}<option value="__new">New function…</option></select>
+      <button class="btn copysku" data-copysku="${sku.id}" title="Copy this SKU's functions and milestones to every other SKU">Copy to other SKUs</button>
       <label class="kloc">Kitter / Assembly location<input data-k="location" value="${esc(sku.location)}" placeholder="Add location"></label>
     </div></td></tr>`;
     if(!sCol) html+=inner;
@@ -441,7 +443,8 @@ function renderFilters(){
 
 const body=document.getElementById('body');
 body.addEventListener('click',e=>{
-  const t=e.target.closest('[data-toggle],[data-add],[data-del],[data-delfn],[data-clear]'); if(!t) return;
+  const t=e.target.closest('[data-toggle],[data-add],[data-del],[data-delfn],[data-clear],[data-copysku]'); if(!t) return;
+  if(t.dataset.copysku){ copySkuToOthers(t.dataset.copysku); return; }
   if(t.hasAttribute('data-clear')){
     const inp=t.parentElement.querySelector('input[data-k="due"]'); inp.value='';
     saveField({target:inp}); render(); return;
@@ -476,6 +479,23 @@ function saveField(e){
   const r=state.rows.find(x=>x.id===tr.dataset.id); if(r){ r[k]=e.target.value; save(); }
 }
 body.addEventListener('input',saveField);
+/* Duplicate one SKU's functions, function owners/due dates and milestones onto every other SKU */
+function copySkuToOthers(srcId){
+  const src=skuById(srcId), others=state.skus.filter(x=>x.id!==srcId);
+  const fns=[...skuFns(src)];
+  const srcRows=state.rows.filter(r=>r.skuId===srcId && fns.includes(r.fn));
+  const names=others.map(x=>x.name);
+  const list=names.length>1?names.slice(0,-1).join(', ')+' and '+names[names.length-1]:names[0];
+  if(!confirm(`Copy ${src.name}'s ${fns.length} function${fns.length===1?'':'s'} and ${srcRows.length} milestone${srcRows.length===1?'':'s'} to ${list}?\n\nAnything already set up under those SKUs in this view will be replaced. Copied milestones start as Not Started.`)) return;
+  for(const t of others){
+    t.fns=[...fns];
+    state.rows=state.rows.filter(r=>r.skuId!==t.id);
+    for(const k of Object.keys(state.fmeta)) if(k.startsWith(t.id+':')) delete state.fmeta[k];
+    for(const fn of fns){ const m=state.fmeta[fkey(srcId,fn)]; if(m) state.fmeta[fkey(t.id,fn)]={...m}; }
+    for(const r of srcRows) state.rows.push({...r,id:uid(),skuId:t.id,status:'ns'});
+  }
+  save(); render();
+}
 function addFn(skuId,val){
   const sku=skuById(skuId); let id=val;
   if(val==='__new'){
