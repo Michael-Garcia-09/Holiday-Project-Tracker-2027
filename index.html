@@ -109,6 +109,10 @@ tr.item:hover td{background:var(--row-hover)}
 .cell:focus{background:var(--bg)}
 textarea.cell{resize:vertical;min-height:40px;display:block}
 input.cell.late{color:var(--late);font-weight:600}
+.due-wrap{display:flex;align-items:center}
+.due-wrap input.nodate{color:color-mix(in srgb,var(--muted) 55%,transparent)}
+.clr{border:0;background:none;color:var(--muted);cursor:pointer;font-size:15px;line-height:1;padding:4px 6px;border-radius:4px;flex:none}
+.clr:hover{color:var(--late)}
 select.status{border:0;border-radius:999px;padding:4px 10px;margin:0 10px;font-size:13px;font-weight:600;cursor:pointer}
 .st-ns{background:var(--s-ns-bg);color:var(--s-ns-fg)}
 .st-ip{background:var(--s-ip-bg);color:var(--s-ip-fg)}
@@ -119,6 +123,20 @@ select.status{border:0;border-radius:999px;padding:4px 10px;margin:0 10px;font-s
 .del:hover{color:var(--late)}
 tr.empty td{padding:16px;color:var(--muted);font-style:italic}
 footer{color:var(--muted);font-size:13px;margin-top:12px}
+/* Resizable detailed table */
+table.detail{table-layout:fixed;min-width:0}
+table.detail td{overflow:hidden}
+table.detail th{overflow:visible}
+table.detail .cell:focus-visible,table.detail select:focus-visible,table.detail button:focus-visible{outline-offset:-2px}
+.rsz{position:absolute;top:0;right:-5px;width:10px;height:100%;cursor:col-resize;z-index:3;touch-action:none}
+.rsz::after{content:"";position:absolute;top:20%;bottom:20%;left:4px;width:2px;border-radius:1px;background:var(--line)}
+.rsz:hover::after,.rsz.active::after{background:var(--focus);top:0;bottom:0}
+body.resizing{cursor:col-resize;user-select:none}
+/* Days remaining */
+.days{display:block;padding:10px;font-size:14px;white-space:nowrap}
+.days.none{color:color-mix(in srgb,var(--muted) 60%,transparent)}
+.days.soon,.days.today{color:var(--s-oh-fg);font-weight:600}
+.days.over{color:var(--late);font-weight:600}
 [hidden]{display:none!important}
 .viewswitch{display:inline-flex;border:1px solid var(--line);border-radius:9px;background:var(--surface);padding:3px;gap:2px}
 .viewswitch button{border:0;background:transparent;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:600;color:var(--muted)}
@@ -143,6 +161,27 @@ td.cnt{color:var(--muted);font-size:13px;white-space:nowrap}
 td.cnt.full{color:var(--s-dn-fg);font-weight:700}
 tr.cl-total td{font-weight:600;color:var(--muted);font-size:13px;border-bottom:0}
 .cl-note{color:var(--muted);font-size:13px;margin:0 0 12px}
+table.cl col.cl-x{width:44px}
+.cl-namewrap{display:flex;align-items:center;gap:6px}
+.cl-name{width:100%;border:1px solid transparent;background:transparent;padding:4px 6px;border-radius:6px}
+.cl-name:hover,.cl-name:focus{border-color:var(--line);background:var(--surface)}
+.cl-name.pname{font-weight:700}
+.cl-name.cname{margin-left:16px;width:calc(100% - 16px)}
+.add-parent{margin-top:12px}
+/* Retailer view */
+table.rt{min-width:620px}
+table.rt col.rt-a{width:50%} table.rt col.rt-b{width:25%} table.rt col.rt-c{width:25%}
+tr.rt-sku td{background:var(--sku-bg);border-top:2px solid var(--ink);padding:12px}
+tbody tr.rt-sku:first-child td{border-top:0}
+.rt-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.rt-picks{display:flex;flex-wrap:wrap;gap:8px}
+.pick{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border:1px solid var(--line);border-radius:999px;font-size:13px;cursor:pointer;background:var(--surface);color:var(--muted)}
+.pick:has(input:checked){border-color:var(--ink);color:var(--ink);font-weight:600}
+.pick input{accent-color:var(--s-dn-fg);margin:0}
+tr.rt-row td:first-child{padding:10px 10px 10px 28px}
+.rt-name{font-weight:600}
+tr.rt-row:hover td{background:var(--row-hover)}
+tr.rt-none td{padding:10px 10px 10px 28px;color:var(--muted);font-style:italic;font-size:14px}
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 </style>
 </head>
@@ -157,10 +196,12 @@ tr.cl-total td{font-weight:600;color:var(--muted);font-size:13px;border-bottom:0
     <div class="viewswitch" role="group" aria-label="Choose view">
       <button type="button" data-view="checklist">Checklist</button>
       <button type="button" data-view="detailed">Detailed</button>
+      <button type="button" data-view="retailer">Retailer</button>
     </div>
     <div class="actions" id="detailActions">
       <button class="btn" id="expandAll">Expand all</button>
       <button class="btn" id="collapseAll">Collapse all</button>
+      <button class="btn" id="resetCols">Reset column widths</button>
       <button class="btn" id="exportCsv">Export CSV</button>
       <button class="btn" id="importCsvBtn">Import CSV</button>
       <input type="file" id="importCsv" accept=".csv" hidden>
@@ -169,12 +210,24 @@ tr.cl-total td{font-weight:600;color:var(--muted);font-size:13px;border-bottom:0
   </header>
 
   <section id="checklistView" hidden>
-    <p class="cl-note">Check off each step per SKU. Parent lines with sub-steps fill in automatically once every sub-step is checked.</p>
+    <p class="cl-note">Check off each step per SKU. Parent lines with sub-steps fill in automatically once every sub-step is checked. Click any item name to rename it.</p>
     <div class="table-wrap">
       <table class="cl">
         <colgroup id="clCols"></colgroup>
         <thead id="clHead"></thead>
         <tbody id="clBody"></tbody>
+      </table>
+    </div>
+    <button class="btn add-parent" id="addParent">+ Add checklist item</button>
+  </section>
+
+  <section id="retailerView" hidden>
+    <p class="cl-note">Select the retailers each SKU is going to, then enter the total quantity and set date for each one.</p>
+    <div class="table-wrap">
+      <table class="rt">
+        <colgroup><col class="rt-a"><col class="rt-b"><col class="rt-c"></colgroup>
+        <thead><tr><th scope="col">SKU / Retailer</th><th scope="col">Total QTY</th><th scope="col">Set Date</th></tr></thead>
+        <tbody id="rtBody"></tbody>
       </table>
     </div>
   </section>
@@ -190,11 +243,11 @@ tr.cl-total td{font-weight:600;color:var(--muted);font-size:13px;border-bottom:0
   </div>
 
   <div class="table-wrap">
-    <table>
-      <colgroup><col class="c-sku"><col class="c-fn"><col class="c-ms"><col class="c-own"><col class="c-due"><col class="c-st"><col class="c-notes"><col class="c-x"></colgroup>
-      <thead><tr>
+    <table class="detail" id="detailTable">
+      <colgroup id="detailCols"><col><col><col><col><col><col><col><col><col></colgroup>
+      <thead id="detailHead"><tr>
         <th scope="col">SKU ID / Holiday Item</th><th scope="col">Function</th><th scope="col">Milestone</th>
-        <th scope="col">Owner</th><th scope="col">Due Date</th><th scope="col">Status</th><th scope="col">Notes</th>
+        <th scope="col">Owner</th><th scope="col">Due Date</th><th scope="col">Days Remaining</th><th scope="col">Status</th><th scope="col">Notes</th>
         <th scope="col"><span style="position:absolute;left:-9999px">Delete</span></th>
       </tr></thead>
       <tbody id="body"></tbody>
@@ -223,9 +276,23 @@ const CLOSED = new Set(['dn','cx']);
 const label=id=>(STATUSES.find(s=>s.id===id)||STATUSES[4]).label;
 const KEY = 'holiday-tracker-v1';
 const uid = () => Math.random().toString(36).slice(2,10);
-const today = () => new Date().toISOString().slice(0,10);
+const pad2=n=>String(n).padStart(2,'0');
+const today=()=>{ const t=new Date(); return `${t.getFullYear()}-${pad2(t.getMonth()+1)}-${pad2(t.getDate())}`; }; // local date, not UTC
+function daysUntil(iso){
+  const [y,m,d]=iso.split('-').map(Number), t=new Date();
+  return Math.round((Date.UTC(y,m-1,d)-Date.UTC(t.getFullYear(),t.getMonth(),t.getDate()))/86400000);
+}
+function daysCell(due,status){
+  if(!due) return '<span class="days none">—</span>';
+  if(CLOSED.has(status)) return `<span class="days none" title="${status==='dn'?'Complete':'Cancelled'}">—</span>`;
+  const n=daysUntil(due);
+  if(n<0) return `<span class="days over">${-n} day${n===-1?'':'s'} overdue</span>`;
+  if(n===0) return '<span class="days today">Due today</span>';
+  return `<span class="days${n<=7?' soon':''}">${n} day${n===1?'':'s'}</span>`;
+}
 const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const isLate = (due,status) => !!due && !CLOSED.has(status) && due < today();
+const dueCell=(val,late,label)=>`<div class="due-wrap"><input class="cell${late?' late':''}${val?'':' nodate'}" type="date" data-k="due" value="${esc(val)}" aria-label="${label}"${late?' title="Past due"':''}>${val?`<button class="clr" data-clear aria-label="Clear ${label}" title="Remove date">×</button>`:''}</div>`;
 const statusOptions = cur => STATUSES.map(s=>`<option value="${s.id}"${s.id===cur?' selected':''}>${s.label}</option>`).join('');
 
 function freshState(){
@@ -315,7 +382,8 @@ function render(){
         <td><div class="fn-head"><button class="toggle" data-toggle="${fKey}" aria-expanded="${!fCol}" aria-label="Show or hide ${esc(f.name)} milestones for ${esc(sku.name)}"><span>▾</span></button><span class="fn-dot" aria-hidden="true"></span>${esc(f.name)}</div></td>
         <td><div class="fn-meta"><span class="fcount">${rows.length ? rows.length+' milestone'+(rows.length===1?'':'s') : 'No milestones yet'}</span><button class="plus" data-add="${k}" aria-label="Add a ${esc(f.name)} milestone for ${esc(sku.name)}" title="Add milestone">+</button></div></td>
         <td><input class="cell" data-k="owner" value="${esc(meta.owner)}" placeholder="Owner" aria-label="${esc(f.name)} owner for ${esc(sku.name)}"></td>
-        <td><input class="cell${late?' late':''}" type="date" data-k="due" value="${esc(meta.due)}" aria-label="${esc(f.name)} due date"${late?' title="Past due"':''}></td>
+        <td>${dueCell(meta.due,late,esc(f.name)+' due date')}</td>
+        <td>${daysCell(meta.due,rs)}</td>
         <td><span class="pill st-${rs}" title="Rolled up from this function's milestones">${label(rs)}</span>${rows.length?`<span class="rcount">${done}/${rows.length}</span>`:''}</td>
         <td></td>
         <td><button class="del" data-delfn="${k}" aria-label="Remove ${esc(f.name)} from ${esc(sku.name)}" title="Remove function">×</button></td>
@@ -328,7 +396,8 @@ function render(){
           <td><div class="ctx fnctx">${esc(f.name)}</div></td>
           <td><div class="ms-wrap"><button class="grip" data-grip aria-label="Reorder milestone. Drag, or use the up and down arrow keys" title="Drag to reorder">⠿</button><input class="cell" data-k="milestone" value="${esc(r.milestone)}" placeholder="Milestone" aria-label="Milestone"></div></td>
           <td><input class="cell" data-k="owner" value="${esc(r.owner)}" placeholder="Owner" aria-label="Owner"></td>
-          <td><input class="cell${rl?' late':''}" type="date" data-k="due" value="${esc(r.due)}" aria-label="Milestone due date"${rl?' title="Past due"':''}></td>
+          <td>${dueCell(r.due,rl,'milestone due date')}</td>
+          <td>${daysCell(r.due,r.status)}</td>
           <td><select class="status st-${r.status}" data-k="status" aria-label="Milestone status">${statusOptions(r.status)}</select></td>
           <td><textarea class="cell" data-k="notes" rows="1" placeholder="Notes" aria-label="Notes">${esc(r.notes)}</textarea></td>
           <td><button class="del" data-del="${r.id}" aria-label="Delete milestone" title="Delete">×</button></td>
@@ -336,7 +405,7 @@ function render(){
       }
     }
     if(anyF && !inner) continue;
-    html+=`<tr class="sku${sCol?' is-collapsed':''}" data-sku="${sku.id}"><td colspan="8"><div class="sku-inner">
+    html+=`<tr class="sku${sCol?' is-collapsed':''}" data-sku="${sku.id}"><td colspan="9"><div class="sku-inner">
       <button class="toggle" data-toggle="${sKey}" aria-expanded="${!sCol}" aria-label="Show or hide ${esc(sku.name)}"><span>▾</span></button>
       <span class="sname">${esc(sku.name)}</span>
       <span class="scount">${skuRows.length} milestone${skuRows.length===1?'':'s'}, ${done} complete</span>
@@ -345,7 +414,7 @@ function render(){
     </div></td></tr>`;
     if(!sCol) html+=inner;
   }
-  if(!html) html='<tr class="empty"><td colspan="8">No milestones match these filters. Clear the search or pick a different status.</td></tr>';
+  if(!html) html='<tr class="empty"><td colspan="9">No milestones match these filters. Clear the search or pick a different status.</td></tr>';
   document.getElementById('body').innerHTML=html;
   renderSummary(); renderFilters();
 }
@@ -372,7 +441,11 @@ function renderFilters(){
 
 const body=document.getElementById('body');
 body.addEventListener('click',e=>{
-  const t=e.target.closest('[data-toggle],[data-add],[data-del],[data-delfn]'); if(!t) return;
+  const t=e.target.closest('[data-toggle],[data-add],[data-del],[data-delfn],[data-clear]'); if(!t) return;
+  if(t.hasAttribute('data-clear')){
+    const inp=t.parentElement.querySelector('input[data-k="due"]'); inp.value='';
+    saveField({target:inp}); render(); return;
+  }
   if(t.dataset.toggle){ const k=t.dataset.toggle; collapsed.has(k)?collapsed.delete(k):collapsed.add(k); render(); }
   else if(t.dataset.add){
     const [skuId,fn]=t.dataset.add.split(':');
@@ -513,8 +586,8 @@ document.getElementById('importCsv').onchange=async e=>{
   e.target.value='';
 };
 
-/* ===== High-level checklist ===== */
-const CHECKLIST=[
+/* ===== High-level checklist (editable items) ===== */
+const DEFAULT_CHECKLIST=[
   {id:'forecast',name:'Forecast Submitted to Finance (Namrata)',owner:'Retail',children:[
     {id:'forecast-demand',name:'Added into Demand Forecast (Evergreen SKUs)'}]},
   {id:'sales',name:'Sales Plans Finalized by Retail',owner:'Retail',children:[
@@ -530,72 +603,210 @@ const CHECKLIST=[
   {id:'quotes',name:'Quotes Received from Kitter / Approved by Lemme',owner:'Operations',children:[]},
   {id:'pos',name:'Purchase Orders Placed with Kitter',owner:'Operations',children:[]}
 ];
-function cl(){ if(!state.cl) state.cl={owners:{},checks:{}}; return state.cl; }
-const ck=(itemId,skuId)=>!!cl().checks[itemId+':'+skuId];
-const checkable=()=>CHECKLIST.flatMap(p=>p.children.length?p.children:[p]);
+function cl(){
+  if(!state.cl) state.cl={};
+  const c=state.cl;
+  if(!c.checks) c.checks={};
+  if(!Array.isArray(c.items)){
+    const owners=c.owners||{};
+    c.items=DEFAULT_CHECKLIST.map(p=>({id:p.id,name:p.name,owner:owners[p.id]??p.owner,children:p.children.map(k=>({...k}))}));
+    delete c.owners;
+  }
+  return c;
+}
+const ck=(id,skuId)=>!!cl().checks[id+':'+skuId];
+const checkable=()=>cl().items.flatMap(p=>p.children.length?p.children:[p]);
+function findItem(id){
+  for(const p of cl().items){ if(p.id===id) return {item:p,parent:null};
+    const k=p.children.find(x=>x.id===id); if(k) return {item:k,parent:p}; }
+  return {};
+}
 
 function renderChecklist(){
-  const skus=state.skus, n=skus.length;
-  document.getElementById('clCols').innerHTML='<col class="cl-item"><col class="cl-own">'+skus.map(()=>'<col>').join('')+'<col class="cl-done">';
+  const skus=state.skus, n=skus.length, items=cl().items;
+  document.getElementById('clCols').innerHTML='<col class="cl-item"><col class="cl-own">'+skus.map(()=>'<col>').join('')+'<col class="cl-done"><col class="cl-x">';
   document.getElementById('clHead').innerHTML='<tr><th scope="col">Checklist item</th><th scope="col">Owner</th>'+
-    skus.map(s=>`<th scope="col" class="sk">${esc(s.name)}</th>`).join('')+'<th scope="col" class="cnt">Done</th></tr>';
+    skus.map(s=>`<th scope="col" class="sk">${esc(s.name)}</th>`).join('')+'<th scope="col" class="cnt">Done</th><th scope="col"><span style="position:absolute;left:-9999px">Delete</span></th></tr>';
   let h='';
-  for(const p of CHECKLIST){
-    const owner=cl().owners[p.id]??p.owner;
-    const hasKids=p.children.length>0;
+  for(const p of items){
+    const hasKids=p.children.length>0, pname=p.name||'Untitled item';
     let cells='', doneCount=0;
     for(const s of skus){
       if(hasKids){
         const c=p.children.filter(k=>ck(k.id,s.id)).length, all=c===p.children.length;
         if(all) doneCount++;
-        cells+=`<td class="ck"><input type="checkbox" disabled ${all?'checked':''} data-ind="${c>0&&!all?1:0}" aria-label="${esc(p.name)}, ${esc(s.name)}: ${c} of ${p.children.length} sub-steps done" title="${c} of ${p.children.length} sub-steps done"></td>`;
+        cells+=`<td class="ck"><input type="checkbox" disabled ${all?'checked':''} data-ind="${c>0&&!all?1:0}" aria-label="${esc(pname)}, ${esc(s.name)}: ${c} of ${p.children.length} sub-steps done" title="${c} of ${p.children.length} sub-steps done"></td>`;
       }else{
         const on=ck(p.id,s.id); if(on) doneCount++;
-        cells+=`<td class="ck"><input type="checkbox" data-ck="${p.id}:${s.id}" ${on?'checked':''} aria-label="${esc(p.name)}, ${esc(s.name)}"></td>`;
+        cells+=`<td class="ck"><input type="checkbox" data-ck="${p.id}:${s.id}" ${on?'checked':''} aria-label="${esc(pname)}, ${esc(s.name)}"></td>`;
       }
     }
-    h+=`<tr class="cl-parent"><td><span class="cl-pname">${esc(p.name)}</span></td>
-      <td><input class="cl-own-in" data-owner="${p.id}" value="${esc(owner)}" placeholder="Owner" aria-label="Owner for ${esc(p.name)}"></td>
-      ${cells}<td class="cnt${doneCount===n?' full':''}">${doneCount}/${n}</td></tr>`;
+    h+=`<tr class="cl-parent"><td><div class="cl-namewrap"><input class="cl-name pname" data-name="${p.id}" value="${esc(p.name)}" placeholder="New checklist item" aria-label="Checklist item name"><button class="plus" data-addsub="${p.id}" aria-label="Add a sub-step to ${esc(pname)}" title="Add sub-step">+</button></div></td>
+      <td><input class="cl-own-in" data-owner="${p.id}" value="${esc(p.owner)}" placeholder="Owner" aria-label="Owner for ${esc(pname)}"></td>
+      ${cells}<td class="cnt${n&&doneCount===n?' full':''}">${doneCount}/${n}</td>
+      <td><button class="del" data-delitem="${p.id}" aria-label="Delete ${esc(pname)}" title="Delete item">×</button></td></tr>`;
     for(const k of p.children){
       let kc='', kd=0;
       for(const s of skus){ const on=ck(k.id,s.id); if(on) kd++;
-        kc+=`<td class="ck"><input type="checkbox" data-ck="${k.id}:${s.id}" ${on?'checked':''} aria-label="${esc(k.name)}, ${esc(s.name)}"></td>`; }
-      h+=`<tr class="cl-child"><td><span class="cl-cname">${esc(k.name)}</span></td>
-        <td><span class="cl-own-inh">${esc(owner)}</span></td>${kc}<td class="cnt${kd===n?' full':''}">${kd}/${n}</td></tr>`;
+        kc+=`<td class="ck"><input type="checkbox" data-ck="${k.id}:${s.id}" ${on?'checked':''} aria-label="${esc(k.name||'Sub-step')}, ${esc(s.name)}"></td>`; }
+      h+=`<tr class="cl-child"><td><input class="cl-name cname" data-name="${k.id}" value="${esc(k.name)}" placeholder="New sub-step" aria-label="Sub-step name"></td>
+        <td><span class="cl-own-inh">${esc(p.owner)}</span></td>${kc}<td class="cnt${n&&kd===n?' full':''}">${kd}/${n}</td>
+        <td><button class="del" data-delitem="${k.id}" aria-label="Delete sub-step" title="Delete sub-step">×</button></td></tr>`;
     }
   }
-  const items=checkable();
-  h+='<tr class="cl-total"><td>Steps complete per SKU</td><td></td>'+skus.map(s=>{
-    const d=items.filter(i=>ck(i.id,s.id)).length; return `<td class="cnt${d===items.length?' full':''}">${d}/${items.length}</td>`;}).join('')+'<td></td></tr>';
-  const body=document.getElementById('clBody'); body.innerHTML=h;
-  body.querySelectorAll('[data-ind="1"]').forEach(el=>el.indeterminate=true);
+  if(!items.length) h=`<tr class="empty"><td colspan="${n+4}">No checklist items yet. Use “Add checklist item” to start.</td></tr>`;
+  else{
+    const all=checkable();
+    h+='<tr class="cl-total"><td>Steps complete per SKU</td><td></td>'+skus.map(s=>{
+      const d=all.filter(i=>ck(i.id,s.id)).length; return `<td class="cnt${d===all.length?' full':''}">${d}/${all.length}</td>`;}).join('')+'<td></td><td></td></tr>';
+  }
+  const b=document.getElementById('clBody'); b.innerHTML=h;
+  b.querySelectorAll('[data-ind="1"]').forEach(el=>el.indeterminate=true);
 }
-document.getElementById('clBody').addEventListener('change',e=>{
+const clBody=document.getElementById('clBody');
+clBody.addEventListener('change',e=>{
   const k=e.target.dataset.ck; if(!k) return;
   if(e.target.checked) cl().checks[k]=true; else delete cl().checks[k];
   save(); renderChecklist();
 });
-document.getElementById('clBody').addEventListener('input',e=>{
-  const id=e.target.dataset.owner; if(!id) return;
-  cl().owners[id]=e.target.value; save();
+clBody.addEventListener('input',e=>{
+  if(e.target.dataset.owner){ findItem(e.target.dataset.owner).item.owner=e.target.value; save(); }
+  if(e.target.dataset.name){ findItem(e.target.dataset.name).item.name=e.target.value; save(); }
 });
-document.getElementById('clBody').addEventListener('focusout',e=>{ if(e.target.dataset.owner) renderChecklist(); });
+clBody.addEventListener('focusout',e=>{ if(e.target.dataset.owner) renderChecklist(); });
+clBody.addEventListener('click',e=>{
+  const add=e.target.closest('[data-addsub]'), del=e.target.closest('[data-delitem]');
+  if(add){
+    const p=findItem(add.dataset.addsub).item, k={id:uid(),name:''};
+    p.children.push(k); save(); renderChecklist();
+    clBody.querySelector(`[data-name="${k.id}"]`)?.focus();
+  }
+  if(del){
+    const {item,parent}=findItem(del.dataset.delitem); if(!item) return;
+    const kids=parent?[]:item.children;
+    const what=`“${item.name||(parent?'this sub-step':'this item')}”`+(kids.length?` and its ${kids.length} sub-step${kids.length===1?'':'s'}`:'');
+    if(!confirm(`Delete ${what}?`)) return;
+    for(const id of [item.id,...kids.map(k=>k.id)])
+      for(const key of Object.keys(cl().checks)) if(key.startsWith(id+':')) delete cl().checks[key];
+    if(parent) parent.children=parent.children.filter(x=>x!==item);
+    else cl().items=cl().items.filter(x=>x!==item);
+    save(); renderChecklist();
+  }
+});
+document.getElementById('addParent').onclick=()=>{
+  const p={id:uid(),name:'',owner:'',children:[]};
+  cl().items.push(p); save(); renderChecklist();
+  clBody.querySelector(`[data-name="${p.id}"]`)?.focus();
+};
 
-/* ===== View switching (#checklist / #detailed) ===== */
-const VIEWS=['checklist','detailed'];
+/* ===== Retailer view ===== */
+const DEFAULT_RETAILERS=['Target','Walmart','Ulta','Kroger','Revolve','iHerb','TikTokShop'];
+const retailers=()=>state.retailers||(state.retailers=[...DEFAULT_RETAILERS]);
+function retFor(skuId,r){
+  state.ret=state.ret||{}; state.ret[skuId]=state.ret[skuId]||{};
+  return state.ret[skuId][r]||(state.ret[skuId][r]={on:false,qty:'',date:''});
+}
+const fmtQty=n=>Number(n||0).toLocaleString();
+function skuRetTotals(skuId){
+  const on=retailers().filter(r=>retFor(skuId,r).on);
+  return {count:on.length, qty:on.reduce((a,r)=>a+(Number(retFor(skuId,r).qty)||0),0)};
+}
+function renderRetailer(){
+  let h='';
+  for(const s of state.skus){
+    const t=skuRetTotals(s.id);
+    h+=`<tr class="rt-sku" data-sku="${s.id}"><td colspan="3">
+      <div class="rt-head"><span class="sname">${esc(s.name)}</span>
+      <span class="scount" data-total="${s.id}">${t.count} retailer${t.count===1?'':'s'}, ${fmtQty(t.qty)} units total</span></div>
+      <div class="rt-picks" role="group" aria-label="Retailers for ${esc(s.name)}">${retailers().map(r=>
+        `<label class="pick"><input type="checkbox" data-rpick data-sku="${s.id}" data-ret="${esc(r)}" ${retFor(s.id,r).on?'checked':''}>${esc(r)}</label>`).join('')}</div>
+    </td></tr>`;
+    const on=retailers().filter(r=>retFor(s.id,r).on);
+    if(!on.length){ h+=`<tr class="rt-none"><td colspan="3">No retailers selected for ${esc(s.name)} yet.</td></tr>`; continue; }
+    for(const r of on){
+      const v=retFor(s.id,r);
+      h+=`<tr class="rt-row"><td><span class="rt-name">${esc(r)}</span></td>
+        <td><input class="cell" type="number" min="0" step="1" inputmode="numeric" data-rq data-sku="${s.id}" data-ret="${esc(r)}" value="${esc(v.qty)}" placeholder="Enter QTY" aria-label="${esc(r)} total quantity for ${esc(s.name)}"></td>
+        <td><div class="due-wrap"><input class="cell${v.date?'':' nodate'}" type="date" data-rd data-sku="${s.id}" data-ret="${esc(r)}" value="${esc(v.date)}" aria-label="${esc(r)} set date for ${esc(s.name)}">${v.date?`<button class="clr" data-rclear data-sku="${s.id}" data-ret="${esc(r)}" aria-label="Clear ${esc(r)} set date" title="Remove date">×</button>`:''}</div></td></tr>`;
+    }
+  }
+  document.getElementById('rtBody').innerHTML=h;
+}
+const rtBody=document.getElementById('rtBody');
+const rtTarget=el=>retFor(el.dataset.sku,el.dataset.ret);
+function updateRetTotal(skuId){
+  const t=skuRetTotals(skuId), el=rtBody.querySelector(`[data-total="${skuId}"]`);
+  if(el) el.textContent=`${t.count} retailer${t.count===1?'':'s'}, ${fmtQty(t.qty)} units total`;
+}
+rtBody.addEventListener('change',e=>{
+  const el=e.target;
+  if(el.hasAttribute('data-rpick')){ rtTarget(el).on=el.checked; save(); renderRetailer(); }
+  else if(el.hasAttribute('data-rd')){ rtTarget(el).date=el.value; save(); renderRetailer(); }
+});
+rtBody.addEventListener('input',e=>{
+  const el=e.target;
+  if(el.hasAttribute('data-rq')){ rtTarget(el).qty=el.value; save(); updateRetTotal(el.dataset.sku); }
+  if(el.hasAttribute('data-rd')){ rtTarget(el).date=el.value; save(); }
+});
+rtBody.addEventListener('click',e=>{
+  const c=e.target.closest('[data-rclear]'); if(!c) return;
+  rtTarget(c).date=''; save(); renderRetailer();
+});
+
+/* ===== View switching (#checklist / #detailed / #retailer) ===== */
+const VIEWS=['checklist','detailed','retailer'];
 function showView(){
   const v=VIEWS.includes(location.hash.slice(1))?location.hash.slice(1):'detailed';
   document.getElementById('checklistView').hidden=v!=='checklist';
   document.getElementById('detailView').hidden=v!=='detailed';
+  document.getElementById('retailerView').hidden=v!=='retailer';
   document.getElementById('detailActions').hidden=v!=='detailed';
   document.querySelectorAll('.viewswitch button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.view===v));
-  if(v==='checklist') renderChecklist(); else render();
+  if(v==='checklist') renderChecklist(); else if(v==='retailer') renderRetailer(); else render();
 }
 document.querySelector('.viewswitch').addEventListener('click',e=>{
   const b=e.target.closest('[data-view]'); if(b) location.hash=b.dataset.view;
 });
 window.addEventListener('hashchange',showView);
+
+/* ===== Column widths (drag the edge of any header) ===== */
+const DEF_W=[130,180,240,120,150,120,150,200,40], MIN_W=[70,90,110,60,120,70,100,80,36];
+const colW=()=>(Array.isArray(state.colW)&&state.colW.length===DEF_W.length)?state.colW:[...DEF_W];
+function applyCols(){
+  const w=colW();
+  document.querySelectorAll('#detailCols col').forEach((c,i)=>c.style.width=w[i]+'px');
+  document.getElementById('detailTable').style.width=w.reduce((a,b)=>a+b,0)+'px';
+}
+document.querySelectorAll('#detailHead th').forEach((th,i)=>{
+  if(i===DEF_W.length-1) return;
+  th.style.position='sticky';
+  const h=document.createElement('span'); h.className='rsz'; h.dataset.col=i;
+  h.title='Drag to resize. Double-click to reset.'; h.setAttribute('aria-hidden','true');
+  th.appendChild(h);
+});
+const head=document.getElementById('detailHead');
+head.addEventListener('pointerdown',e=>{
+  const h=e.target.closest('.rsz'); if(!h) return;
+  e.preventDefault();
+  const i=+h.dataset.col, startX=e.clientX, w=[...colW()], startW=w[i];
+  h.classList.add('active'); document.body.classList.add('resizing'); h.setPointerCapture(e.pointerId);
+  const move=ev=>{ w[i]=Math.max(MIN_W[i],Math.round(startW+ev.clientX-startX)); state.colW=w; applyCols(); };
+  const up=()=>{ h.classList.remove('active'); document.body.classList.remove('resizing');
+    h.removeEventListener('pointermove',move); h.removeEventListener('pointerup',up); h.removeEventListener('pointercancel',up); save(); };
+  h.addEventListener('pointermove',move); h.addEventListener('pointerup',up); h.addEventListener('pointercancel',up);
+});
+head.addEventListener('dblclick',e=>{
+  const h=e.target.closest('.rsz'); if(!h) return;
+  const w=[...colW()]; w[+h.dataset.col]=DEF_W[+h.dataset.col]; state.colW=w; applyCols(); save();
+});
+document.getElementById('resetCols').onclick=()=>{ delete state.colW; applyCols(); save(); };
+applyCols();
+
+/* Keep "Days Remaining" current: re-draw when the date rolls over or the tab comes back */
+let shownDay=today();
+function refreshIfNewDay(){ if(today()!==shownDay){ shownDay=today(); showView(); } }
+setInterval(refreshIfNewDay,60000);
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden) refreshIfNewDay(); });
 
 render();
 showView();
